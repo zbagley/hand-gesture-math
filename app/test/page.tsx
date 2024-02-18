@@ -6,25 +6,62 @@ import {
   FilesetResolver,
   DrawingUtils,
 } from '@mediapipe/tasks-vision';
-import Webcam from '@/components/webcam';
 import { useEffect, useRef, useState } from 'react';
 
 export default function Page() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [data, setData] = useState<MediaStream | null>(null);
-  const videoStream = (videoData: MediaStream | null) => {
-    setData(videoData);
-    console.log('got data: ', videoData);
-  };
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
+
   useEffect(() => {
-    console.log('effect data: ', data);
-  }, [data]);
+    const enableVideoStream = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+        });
+        setMediaStream(stream);
+      } catch (error) {
+        console.error('Error accessing webcam', error);
+      }
+    };
+
+    enableVideoStream();
+  }, []);
+
+  useEffect(() => {
+    if (videoRef.current && mediaStream) {
+      videoRef.current.srcObject = mediaStream;
+    }
+  }, [videoRef, mediaStream]);
+
+  useEffect(() => {
+    return () => {
+      if (mediaStream) {
+        mediaStream.getTracks().forEach((track) => {
+          track.stop();
+        });
+      }
+    };
+  }, [mediaStream]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (canvas) {
-      console.log(canvasRef);
-      const ctx = canvas.getContext('2d');
+    const video = videoRef.current;
+    if (canvas && video && mediaStream) {
+      video.addEventListener(
+        'loadedmetadata',
+        () => {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          requestAnimationFrame(loop);
+        },
+        { once: true }
+      );
+      const loop = () => {
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(video, 0, 0);
+        requestAnimationFrame(loop);
+      };
     }
   });
   // let gestureRecognizer: GestureRecognizer;
@@ -159,13 +196,8 @@ export default function Page() {
         crossOrigin="anonymous"
       ></Script>
       <h1>Hello World - Test!</h1>
-      <Webcam videoStream={videoStream}></Webcam>
-      <canvas
-        width="200px"
-        height="200px"
-        color="blue"
-        ref={canvasRef}
-      ></canvas>
+      <video ref={videoRef} autoPlay={true} style={{ display: 'none' }} />
+      <canvas ref={canvasRef}></canvas>
     </section>
   );
 }
