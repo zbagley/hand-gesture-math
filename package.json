@@ -10,6 +10,7 @@
     "lint:fix": "next lint --fix"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.9",
     "next": "14.1.0",
     "react": "^18",
     "react-dom": "^18"
