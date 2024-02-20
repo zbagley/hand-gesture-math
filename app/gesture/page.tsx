@@ -1,17 +1,40 @@
 'use client';
 
 import Script from 'next/script';
-import {
-  GestureRecognizer,
-  FilesetResolver,
-  DrawingUtils,
-} from '@mediapipe/tasks-vision';
+import { GestureRecognizer, FilesetResolver } from '@mediapipe/tasks-vision';
 import { useEffect, useRef, useState } from 'react';
 
 export default function Page() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
+  const [gestureRecognizer, setGestureRecognizer] =
+    useState<GestureRecognizer | null>(null);
+  const [isStreaming, setIsStreaming] = useState<boolean>(false);
+  const [currentGesture, setCurrentGesture] = useState<{
+    name: string;
+    location: { x: number; y: number };
+  } | null>(null);
+
+  // Load gesture recognizer and pre-build
+  useEffect(() => {
+    const loadGestureRecognizer = async () => {
+      if (!gestureRecognizer) {
+        const vision = await FilesetResolver.forVisionTasks(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+        );
+        const gRec = await GestureRecognizer.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              'https://storage.googleapis.com/mediapipe-tasks/gesture_recognizer/gesture_recognizer.task',
+          },
+          numHands: 1,
+        });
+        setGestureRecognizer(gRec);
+      }
+    };
+    loadGestureRecognizer();
+  });
 
   useEffect(() => {
     const enableVideoStream = async () => {
@@ -47,23 +70,52 @@ export default function Page() {
   useEffect(() => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
-    if (canvas && video && mediaStream) {
+    if (canvas && video && mediaStream && gestureRecognizer && !isStreaming) {
+      setIsStreaming(true);
       video.addEventListener(
         'loadedmetadata',
         () => {
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
+          gestureRecognizer.setOptions({ runningMode: 'VIDEO' });
           requestAnimationFrame(loop);
         },
         { once: true }
       );
+      let lastVideoTime = 0;
       const loop = () => {
         const ctx = canvas.getContext('2d');
         ctx?.drawImage(video, 0, 0);
+        if (video.currentTime > lastVideoTime) {
+          const gestureRecognitionResult = gestureRecognizer.recognizeForVideo(
+            video,
+            video.currentTime
+          );
+          if (gestureRecognitionResult.gestures.length > 0) {
+            setCurrentGesture({
+              name: gestureRecognitionResult.gestures[0][0].categoryName,
+              location: {
+                x: +(
+                  gestureRecognitionResult.landmarks[0]
+                    .map((data) => data.x)
+                    .reduce((prev, current) => prev + current) / 21
+                ).toFixed(2),
+                y: +(
+                  gestureRecognitionResult.landmarks[0]
+                    .map((data) => data.y)
+                    .reduce((prev, current) => prev + current) / 21
+                ).toFixed(2),
+              },
+            });
+          } else {
+            setCurrentGesture(null);
+          }
+          lastVideoTime = video.currentTime;
+        }
         requestAnimationFrame(loop);
       };
     }
-  });
+  }, [mediaStream, gestureRecognizer, isStreaming]);
   // let gestureRecognizer: GestureRecognizer;
   // let enableWebcamButton: HTMLButtonElement;
   // let webcamRunning: Boolean = false;
@@ -198,6 +250,17 @@ export default function Page() {
       <h1>Hello World - Test!</h1>
       <video ref={videoRef} autoPlay={true} style={{ display: 'none' }} />
       <canvas ref={canvasRef}></canvas>
+      <div>
+        Gesture: <br />
+        {currentGesture
+          ? 'Name: ' +
+            currentGesture.name +
+            ' Location - x: ' +
+            currentGesture.location.x +
+            ' y: ' +
+            currentGesture.location.y
+          : 'None Found'}
+      </div>
     </section>
   );
 }

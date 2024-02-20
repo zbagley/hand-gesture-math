@@ -4,10 +4,6 @@ export const metadata: Metadata = {
   title: 'Nested Title',
 };
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function Gesture({ children }: { children: React.ReactNode }) {
   return <section>{children}</section>;
 }

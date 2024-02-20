@@ -4,7 +4,7 @@ export default function Home() {
   return (
     <section>
       <h1>Hello World!</h1>
-      <Link href="/test">Link</Link>
+      <Link href="/gesture">Link</Link>
     </section>
   );
 }
