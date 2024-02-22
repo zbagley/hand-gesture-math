@@ -32,7 +32,7 @@ export interface GestureState {
 export const initialGesture: GestureState = {
   gesturePipe: [],
   currentGesture: {
-    name: 'None',
+    name: GestureNames.None,
     location: {
       x: -1,
       y: -1,

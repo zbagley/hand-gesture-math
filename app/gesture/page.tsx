@@ -220,25 +220,9 @@ export default function Page() {
         },
       });
     }
+    // TODO: Move updates for current action into reducer if possible
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.gesturePipe]);
-
-  // useEffect(() => {
-  //   console.log('here with: ', latestGesture?.name ?? 'None', currentGesture);
-  //   if ((latestGesture?.name ?? 'None') === currentGesture) {
-  //     setGestureCount((g) => g + 1);
-  //   }
-  //   if (gestureCount > 10) {
-  //     setGestureCount(0);
-  //     setPreviousGesture(currentGesture);
-  //     setCurrentGesture(latestGesture?.name ?? 'None');
-  //     if (
-  //       previousGesture === 'Open_Palm' &&
-  //       latestGesture?.name === 'Closed_Fist'
-  //     ) {
-  //       console.log('it procd');
-  //     }
-  //   }
-  // }, [latestGesture]);
 
   return (
     <section>
