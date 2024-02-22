@@ -2,20 +2,23 @@
 
 import Script from 'next/script';
 import { GestureRecognizer, FilesetResolver } from '@mediapipe/tasks-vision';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
+import {
+  GestureActionKind,
+  GestureNames,
+  gestureReducer,
+  initialGesture,
+} from '@/reducers/gesture-reducer';
 
 export default function Page() {
+  const [state, dispatch] = useReducer(gestureReducer, initialGesture);
+  const drawRef = useRef<HTMLCanvasElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
   const [gestureRecognizer, setGestureRecognizer] =
     useState<GestureRecognizer | null>(null);
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
-  const [currentGesture, setCurrentGesture] = useState<{
-    name: string;
-    location: { x: number; y: number };
-  } | null>(null);
-
   // Load gesture recognizer and pre-build
   useEffect(() => {
     const loadGestureRecognizer = async () => {
@@ -68,16 +71,57 @@ export default function Page() {
   }, [mediaStream]);
 
   useEffect(() => {
+    const ball = {
+      x: 0,
+      y: 0,
+      vy: 6,
+      radius: 25,
+      color: 'blue',
+      draw(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
+        if (ball.y < 0 || ball.x < 0 || ball.y > canvas.height) {
+          ball.y = 0;
+          ball.x = canvas.width * Math.random();
+        }
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2, true);
+        ctx.closePath();
+        ctx.fillStyle = this.color;
+        ctx.fill();
+      },
+    };
+    const drawBall = (
+      canvas: HTMLCanvasElement,
+      ctx: CanvasRenderingContext2D
+    ) => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ball.draw(canvas, ctx);
+      ball.y += ball.vy;
+      window.requestAnimationFrame(() => drawBall(canvas, ctx));
+    };
+
     const canvas = canvasRef.current;
+    const draw = drawRef.current;
     const video = videoRef.current;
-    if (canvas && video && mediaStream && gestureRecognizer && !isStreaming) {
+    if (
+      draw &&
+      canvas &&
+      video &&
+      mediaStream &&
+      gestureRecognizer &&
+      !isStreaming
+    ) {
       setIsStreaming(true);
       video.addEventListener(
         'loadedmetadata',
         () => {
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
+          draw.width = video.videoWidth;
+          draw.height = video.videoHeight;
           gestureRecognizer.setOptions({ runningMode: 'VIDEO' });
+          const ctx = draw.getContext('2d');
+          if (!ctx) return;
+          drawBall(draw, ctx);
           requestAnimationFrame(loop);
         },
         { once: true }
@@ -92,23 +136,35 @@ export default function Page() {
             video.currentTime
           );
           if (gestureRecognitionResult.gestures.length > 0) {
-            setCurrentGesture({
-              name: gestureRecognitionResult.gestures[0][0].categoryName,
-              location: {
-                x: +(
-                  gestureRecognitionResult.landmarks[0]
-                    .map((data) => data.x)
-                    .reduce((prev, current) => prev + current) / 21
-                ).toFixed(2),
-                y: +(
-                  gestureRecognitionResult.landmarks[0]
-                    .map((data) => data.y)
-                    .reduce((prev, current) => prev + current) / 21
-                ).toFixed(2),
+            dispatch({
+              type: GestureActionKind.ADD,
+              data: {
+                name: gestureRecognitionResult.gestures[0][0].categoryName,
+                location: {
+                  x: +(
+                    gestureRecognitionResult.landmarks[0]
+                      .map((data) => data.x)
+                      .reduce((prev, current) => prev + current) / 21
+                  ).toFixed(2),
+                  y: +(
+                    gestureRecognitionResult.landmarks[0]
+                      .map((data) => data.y)
+                      .reduce((prev, current) => prev + current) / 21
+                  ).toFixed(2),
+                },
               },
             });
           } else {
-            setCurrentGesture(null);
+            dispatch({
+              type: GestureActionKind.ADD,
+              data: {
+                name: GestureNames.None,
+                location: {
+                  x: 0,
+                  y: 0,
+                },
+              },
+            });
           }
           lastVideoTime = video.currentTime;
         }
@@ -116,131 +172,74 @@ export default function Page() {
       };
     }
   }, [mediaStream, gestureRecognizer, isStreaming]);
-  // let gestureRecognizer: GestureRecognizer;
-  // let enableWebcamButton: HTMLButtonElement;
-  // let webcamRunning: Boolean = false;
-  // const videoHeight = '360px';
-  // const videoWidth = '480px';
 
-  // const createGestureRecognizer = async () => {
-  //   const vision = await FilesetResolver.forVisionTasks(
-  //     'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
-  //   );
-  //   gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
-  //     baseOptions: {
-  //       modelAssetPath:
-  //         'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task',
-  //       delegate: 'GPU',
-  //     },
-  //     runningMode: 'VIDEO',
-  //   });
-  // };
-  // createGestureRecognizer();
+  useEffect(() => {
+    if (!state.gesturePipe.length) {
+      return;
+    }
+    let didUpdate = false;
+    const gestureCount = state.gesturePipe
+      .map((data) => data.name)
+      .reduce(
+        (cnt, cur) => ((cnt[cur] = cnt[cur] + 1 || 1), cnt),
+        {} as { [key: string]: number }
+      );
+    const largest = Object.keys(gestureCount).reduce((a, b) =>
+      gestureCount[a] > gestureCount[b] ? a : b
+    );
+    if (GestureNames.Closed_Fist === largest) {
+      const nextGesture = state.gesturePipe.find(
+        (data) => data.name === GestureNames.Closed_Fist
+      );
+      if (state.currentGesture.name === GestureNames.Open_Palm) {
+        console.log("Proc'd at ", state.currentGesture.location);
+      }
+      if (nextGesture) {
+        dispatch({ type: GestureActionKind.UPDATE, data: nextGesture });
+      }
+      didUpdate = true;
+    }
+    if (GestureNames.Open_Palm === largest) {
+      const nextGesture = state.gesturePipe.find(
+        (data) => data.name === GestureNames.Open_Palm
+      );
+      if (nextGesture) {
+        dispatch({ type: GestureActionKind.UPDATE, data: nextGesture });
+      }
+      didUpdate = true;
+    }
+    if (!didUpdate) {
+      dispatch({
+        type: GestureActionKind.UPDATE,
+        data: {
+          name: GestureNames.None,
+          location: {
+            x: -1,
+            y: -1,
+          },
+        },
+      });
+    }
+  }, [state.gesturePipe]);
 
-  // const video = document.getElementById('webcam');
-  // const canvasElement = document.getElementById('output_canvas');
-  // const canvasCtx = canvasElement.getContext('2d');
-  // const gestureOutput = document.getElementById('gesture_output');
-
-  // // Check if webcam access is supported.
-  // function hasGetUserMedia() {
-  //   return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-  // }
-
-  // // If webcam supported, add event listener to button for when user
-  // // wants to activate it.
-  // if (hasGetUserMedia()) {
-  //   enableWebcamButton = document.getElementById('webcamButton');
-  //   enableWebcamButton.addEventListener('click', enableCam);
-  // } else {
-  //   console.warn('getUserMedia() is not supported by your browser');
-  // }
-
-  // // Enable the live webcam view and start detection.
-  // function enableCam(event) {
-  //   if (!gestureRecognizer) {
-  //     alert('Please wait for gestureRecognizer to load');
-  //     return;
+  // useEffect(() => {
+  //   console.log('here with: ', latestGesture?.name ?? 'None', currentGesture);
+  //   if ((latestGesture?.name ?? 'None') === currentGesture) {
+  //     setGestureCount((g) => g + 1);
   //   }
-
-  //   if (webcamRunning === true) {
-  //     webcamRunning = false;
-  //     enableWebcamButton.innerText = 'ENABLE PREDICTIONS';
-  //   } else {
-  //     webcamRunning = true;
-  //     enableWebcamButton.innerText = 'DISABLE PREDICTIONS';
-  //   }
-
-  //   // getUsermedia parameters.
-  //   const constraints = {
-  //     video: true,
-  //   };
-
-  //   // Activate the webcam stream.
-  //   navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
-  //     video.srcObject = stream;
-  //     video.addEventListener('loadeddata', predictWebcam);
-  //   });
-  // }
-
-  // let lastVideoTime = -1;
-  // let results = undefined;
-  // async function predictWebcam() {
-  //   const webcamElement = document.getElementById('webcam');
-  //   // Now let's start detecting the stream.
-  //   if (runningMode === 'IMAGE') {
-  //     runningMode = 'VIDEO';
-  //     await gestureRecognizer.setOptions({ runningMode: 'VIDEO' });
-  //   }
-  //   let nowInMs = Date.now();
-  //   if (video.currentTime !== lastVideoTime) {
-  //     lastVideoTime = video.currentTime;
-  //     results = gestureRecognizer.recognizeForVideo(video, nowInMs);
-  //   }
-
-  //   canvasCtx.save();
-  //   canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-  //   const drawingUtils = new DrawingUtils(canvasCtx);
-
-  //   canvasElement.style.height = videoHeight;
-  //   webcamElement.style.height = videoHeight;
-  //   canvasElement.style.width = videoWidth;
-  //   webcamElement.style.width = videoWidth;
-
-  //   if (results.landmarks) {
-  //     for (const landmarks of results.landmarks) {
-  //       drawingUtils.drawConnectors(
-  //         landmarks,
-  //         GestureRecognizer.HAND_CONNECTIONS,
-  //         {
-  //           color: '#00FF00',
-  //           lineWidth: 5,
-  //         }
-  //       );
-  //       drawingUtils.drawLandmarks(landmarks, {
-  //         color: '#FF0000',
-  //         lineWidth: 2,
-  //       });
+  //   if (gestureCount > 10) {
+  //     setGestureCount(0);
+  //     setPreviousGesture(currentGesture);
+  //     setCurrentGesture(latestGesture?.name ?? 'None');
+  //     if (
+  //       previousGesture === 'Open_Palm' &&
+  //       latestGesture?.name === 'Closed_Fist'
+  //     ) {
+  //       console.log('it procd');
   //     }
   //   }
-  //   canvasCtx.restore();
-  //   if (results.gestures.length > 0) {
-  //     gestureOutput.style.display = 'block';
-  //     gestureOutput.style.width = videoWidth;
-  //     const categoryName = results.gestures[0][0].categoryName;
-  //     const categoryScore = parseFloat(
-  //       results.gestures[0][0].score * 100
-  //     ).toFixed(2);
-  //     const handedness = results.handednesses[0][0].displayName;
-  //     gestureOutput.innerText = `GestureRecognizer: ${categoryName}\n Confidence: ${categoryScore} %\n Handedness: ${handedness}`;
-  //   } else {
-  //     gestureOutput.style.display = 'none';
-  //   }
-  //   // Call this function again to keep predicting when the browser is ready.
-  //   if (webcamRunning === true) {
-  //     window.requestAnimationFrame(predictWebcam);
-  //   }
-  // }
+  // }, [latestGesture]);
+
   return (
     <section>
       <Script
@@ -249,17 +248,22 @@ export default function Page() {
       ></Script>
       <h1>Hello World - Test!</h1>
       <video ref={videoRef} autoPlay={true} style={{ display: 'none' }} />
-      <canvas ref={canvasRef}></canvas>
+      <div
+        style={{ position: 'relative', height: videoRef.current?.videoHeight }}
+      >
+        <canvas
+          ref={canvasRef}
+          style={{ position: 'absolute', top: 0, left: 0 }}
+        ></canvas>
+        <canvas
+          ref={drawRef}
+          style={{ position: 'absolute', top: 0, left: 0 }}
+        ></canvas>
+      </div>
       <div>
-        Gesture: <br />
-        {currentGesture
-          ? 'Name: ' +
-            currentGesture.name +
-            ' Location - x: ' +
-            currentGesture.location.x +
-            ' y: ' +
-            currentGesture.location.y
-          : 'None Found'}
+        Gesture: {state.currentGesture.name} <br />
+        Location - x: {state.currentGesture.location.x}, y:{' '}
+        {state.currentGesture.location.y}
       </div>
     </section>
   );
