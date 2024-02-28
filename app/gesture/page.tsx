@@ -226,7 +226,7 @@ export default function Page() {
         crossOrigin="anonymous"
       ></Script>
       <video ref={videoRef} autoPlay={true} style={{ display: 'none' }} />
-      <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <div style={{ position: 'relative', height: canvasRef.current?.height }}>
         <canvas
           ref={canvasRef}
           style={{ position: 'absolute', top: 0, left: 0 }}
