@@ -9,9 +9,14 @@ import {
   gestureReducer,
   initialGesture,
 } from '@/reducers/gesture-reducer';
+import { canvasReducer, initalCanvas } from '@/reducers/canvas-reducer';
 
 export default function Page() {
-  const [state, dispatch] = useReducer(gestureReducer, initialGesture);
+  const [gestureState, gestureDispatch] = useReducer(
+    gestureReducer,
+    initialGesture
+  );
+  const [canvasState, canvasDispatch] = useReducer(canvasReducer, initalCanvas);
   const drawRef = useRef<HTMLCanvasElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -24,7 +29,7 @@ export default function Page() {
     const loadGestureRecognizer = async () => {
       if (!gestureRecognizer) {
         const vision = await FilesetResolver.forVisionTasks(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/wasm'
         );
         const gRec = await GestureRecognizer.createFromOptions(vision, {
           baseOptions: {
@@ -71,34 +76,6 @@ export default function Page() {
   }, [mediaStream]);
 
   useEffect(() => {
-    const ball = {
-      x: 0,
-      y: 0,
-      vy: 6,
-      radius: 25,
-      color: 'blue',
-      draw(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
-        if (ball.y < 0 || ball.x < 0 || ball.y > canvas.height) {
-          ball.y = 0;
-          ball.x = canvas.width * Math.random();
-        }
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2, true);
-        ctx.closePath();
-        ctx.fillStyle = this.color;
-        ctx.fill();
-      },
-    };
-    const drawBall = (
-      canvas: HTMLCanvasElement,
-      ctx: CanvasRenderingContext2D
-    ) => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ball.draw(canvas, ctx);
-      ball.y += ball.vy;
-      window.requestAnimationFrame(() => drawBall(canvas, ctx));
-    };
-
     const canvas = canvasRef.current;
     const draw = drawRef.current;
     const video = videoRef.current;
@@ -110,6 +87,17 @@ export default function Page() {
       gestureRecognizer &&
       !isStreaming
     ) {
+      const drawBall = (
+        canvas: HTMLCanvasElement,
+        ctx: CanvasRenderingContext2D,
+        stopDraw: boolean = false
+      ) => {
+        if (stopDraw) {
+          return;
+        }
+        canvasDispatch({ type: 'UPDATE_LOCATION', ctx });
+        requestAnimationFrame(() => drawBall(canvas, ctx));
+      };
       setIsStreaming(true);
       video.addEventListener(
         'loadedmetadata',
@@ -118,10 +106,14 @@ export default function Page() {
           canvas.height = video.videoHeight;
           draw.width = video.videoWidth;
           draw.height = video.videoHeight;
+          canvasDispatch({
+            type: 'SET_H_W',
+            data: { height: draw.height, width: draw.width },
+          });
           gestureRecognizer.setOptions({ runningMode: 'VIDEO' });
           const ctx = draw.getContext('2d');
           if (!ctx) return;
-          drawBall(draw, ctx);
+          requestAnimationFrame(() => drawBall(draw, ctx));
           requestAnimationFrame(loop);
         },
         { once: true }
@@ -136,7 +128,7 @@ export default function Page() {
             video.currentTime
           );
           if (gestureRecognitionResult.gestures.length > 0) {
-            dispatch({
+            gestureDispatch({
               type: GestureActionKind.ADD,
               data: {
                 name: gestureRecognitionResult.gestures[0][0].categoryName,
@@ -155,7 +147,7 @@ export default function Page() {
               },
             });
           } else {
-            dispatch({
+            gestureDispatch({
               type: GestureActionKind.ADD,
               data: {
                 name: GestureNames.None,
@@ -174,11 +166,11 @@ export default function Page() {
   }, [mediaStream, gestureRecognizer, isStreaming]);
 
   useEffect(() => {
-    if (!state.gesturePipe.length) {
+    if (!gestureState.gesturePipe.length) {
       return;
     }
     let didUpdate = false;
-    const gestureCount = state.gesturePipe
+    const gestureCount = gestureState.gesturePipe
       .map((data) => data.name)
       .reduce(
         (cnt, cur) => ((cnt[cur] = cnt[cur] + 1 || 1), cnt),
@@ -188,28 +180,31 @@ export default function Page() {
       gestureCount[a] > gestureCount[b] ? a : b
     );
     if (GestureNames.Closed_Fist === largest) {
-      const nextGesture = state.gesturePipe.find(
+      const nextGesture = gestureState.gesturePipe.find(
         (data) => data.name === GestureNames.Closed_Fist
       );
-      if (state.currentGesture.name === GestureNames.Open_Palm) {
-        console.log("Proc'd at ", state.currentGesture.location);
+      if (gestureState.currentGesture.name === GestureNames.Open_Palm) {
+        canvasDispatch({
+          type: 'PROC',
+          location: gestureState.currentGesture.location,
+        });
       }
       if (nextGesture) {
-        dispatch({ type: GestureActionKind.UPDATE, data: nextGesture });
+        gestureDispatch({ type: GestureActionKind.UPDATE, data: nextGesture });
       }
       didUpdate = true;
     }
     if (GestureNames.Open_Palm === largest) {
-      const nextGesture = state.gesturePipe.find(
+      const nextGesture = gestureState.gesturePipe.find(
         (data) => data.name === GestureNames.Open_Palm
       );
       if (nextGesture) {
-        dispatch({ type: GestureActionKind.UPDATE, data: nextGesture });
+        gestureDispatch({ type: GestureActionKind.UPDATE, data: nextGesture });
       }
       didUpdate = true;
     }
     if (!didUpdate) {
-      dispatch({
+      gestureDispatch({
         type: GestureActionKind.UPDATE,
         data: {
           name: GestureNames.None,
@@ -222,7 +217,7 @@ export default function Page() {
     }
     // TODO: Move updates for current action into reducer if possible
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.gesturePipe]);
+  }, [gestureState.gesturePipe]);
 
   return (
     <section>
@@ -230,11 +225,8 @@ export default function Page() {
         src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js"
         crossOrigin="anonymous"
       ></Script>
-      <h1>Hello World - Test!</h1>
       <video ref={videoRef} autoPlay={true} style={{ display: 'none' }} />
-      <div
-        style={{ position: 'relative', height: videoRef.current?.videoHeight }}
-      >
+      <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <canvas
           ref={canvasRef}
           style={{ position: 'absolute', top: 0, left: 0 }}
@@ -245,9 +237,11 @@ export default function Page() {
         ></canvas>
       </div>
       <div>
-        Gesture: {state.currentGesture.name} <br />
-        Location - x: {state.currentGesture.location.x}, y:{' '}
-        {state.currentGesture.location.y}
+        Gesture: {gestureState.currentGesture.name} <br />
+        Location - x: {gestureState.currentGesture.location.x}, y:{' '}
+        {gestureState.currentGesture.location.y}
+        <br />
+        Object Location - x: {canvasState.x}, y: {canvasState.y}
       </div>
     </section>
   );
