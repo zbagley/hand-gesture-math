@@ -5,5 +5,5 @@ export const metadata: Metadata = {
 };
 
 export default function Gesture({ children }: { children: React.ReactNode }) {
-  return <section>{children}</section>;
+  return <>{children}</>;
 }

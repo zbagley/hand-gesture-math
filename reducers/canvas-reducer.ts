@@ -4,6 +4,7 @@ export const initalCanvas: ObjectLocation = {
   height: 0,
   width: 0,
   reset: false,
+  count: 0,
 };
 
 export type CanvasActionType =
@@ -17,6 +18,7 @@ export interface ObjectLocation {
   height: number;
   width: number;
   reset: boolean;
+  count: number;
 }
 
 export const canvasReducer = (
@@ -27,23 +29,16 @@ export const canvasReducer = (
 
   switch (type) {
     case 'PROC': {
-      console.log('current: ', state);
-      console.log(
-        'proc: ',
-        action.location.x * state.width,
-        action.location.y * state.height
-      );
       const ballX = state.x / state.width;
       const ballyY = state.y / state.height;
       const procX = action.location.x;
       const procY = action.location.y;
-      console.log(
-        'reset? ',
-        Math.abs(ballX - procX) < 0.1 && Math.abs(ballyY - procY) < 0.1
-      );
+      const reset =
+        Math.abs(ballX - procX) < 0.1 && Math.abs(ballyY - procY) < 0.1;
       return {
         ...state,
-        reset: Math.abs(ballX - procX) < 0.1 && Math.abs(ballyY - procY) < 0.1,
+        reset,
+        count: reset ? state.count + 1 : state.count,
       };
     }
     case 'UPDATE_LOCATION': {

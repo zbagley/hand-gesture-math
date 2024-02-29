@@ -220,29 +220,35 @@ export default function Page() {
   }, [gestureState.gesturePipe]);
 
   return (
-    <section>
-      <Script
-        src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js"
-        crossOrigin="anonymous"
-      ></Script>
+    <>
       <video ref={videoRef} autoPlay={true} style={{ display: 'none' }} />
-      <div style={{ position: 'relative', height: canvasRef.current?.height }}>
-        <canvas
-          ref={canvasRef}
-          style={{ position: 'absolute', top: 0, left: 0 }}
-        ></canvas>
-        <canvas
-          ref={drawRef}
-          style={{ position: 'absolute', top: 0, left: 0 }}
-        ></canvas>
+      <div className="flex flex-col h-full items-center">
+        <Script
+          src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js"
+          crossOrigin="anonymous"
+        ></Script>
+        <div
+          className="aspect-video flex-1"
+          style={{ width: canvasRef?.current?.clientWidth ?? 0 }}
+        >
+          <div className="relative w-full h-full">
+            <canvas
+              ref={canvasRef}
+              className="absolute aspect-video h-full top-0 left-0"
+            ></canvas>
+            <canvas
+              ref={drawRef}
+              className="absolute aspect-video h-full top-0 left-0"
+            ></canvas>
+          </div>
+        </div>
+        <div className="flex flex-row justify-around">
+          <div className="m-4">Current Score - {canvasState.count}</div>
+          <div className="m-4">
+            Gesture: {gestureState.currentGesture.name} <br />
+          </div>
+        </div>
       </div>
-      <div>
-        Gesture: {gestureState.currentGesture.name} <br />
-        Location - x: {gestureState.currentGesture.location.x}, y:{' '}
-        {gestureState.currentGesture.location.y}
-        <br />
-        Object Location - x: {canvasState.x}, y: {canvasState.y}
-      </div>
-    </section>
+    </>
   );
 }
